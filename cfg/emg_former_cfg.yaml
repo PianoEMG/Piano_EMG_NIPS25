@@ -1,0 +1,49 @@
+NETWORK:
+  arch: emg_stage1
+  in_dim: 6
+  hidden_size: 1024
+  num_hidden_layers: 6
+  num_attention_heads: 8
+  intermediate_size: 512
+  window_size: 1
+  quant_factor: 8
+  face_quan_num: 16
+  neg: 0.2
+  INaffine: False
+
+  # quant shape torch.Size([bs, 64, 2048]) --> factor 8 --> [bs, 64, 128]
+  #                                        --> factor 4 --> [bs, 64, 2048]
+  # quant shape torch.Size([bs, 64,  128]) --> factor 8 --> no
+  #                                        --> factor 4 --> [bs, 64, 128]
+  # 8 [bs, 64, 48]
+VQuantizer:
+  n_embed: 256
+  zquant_dim: 64
+
+TRAIN:
+  use_sgd: False
+  sync_bn: False  # adopt sync_bn or not
+  train_gpu: [0]
+  workers: 0  # data loader workers
+  num_threads: 0
+  base_lr: 0.0001
+  StepLR: True
+  warmup_steps: 1
+  adaptive_lr: False
+  factor: 0.3
+  patience: 3
+  threshold: 0.0001
+  poly_lr: False
+  epochs: 200
+  step_size: 20
+  gamma: 0.5
+  start_epoch: 0
+  power: 0.9
+  momentum: 0.9
+  weight_decay: 0.002
+  manual_seed: 131
+  weight:
+  resume:
+  evaluate: True  # evaluate on validation set, extra gpu memory needed and small batch_size_val is recommend
+  eval_freq: 10
+  quant_loss_weight: 1
