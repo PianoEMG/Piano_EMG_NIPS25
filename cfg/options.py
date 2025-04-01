@@ -47,17 +47,15 @@ class Options():
                                  help='Dataset path')
         self.parser.add_argument('--batch_size', '-bs', default=64, type=int,
                                  help='Number of batch size for training')
-        self.parser.add_argument('--batch_size_val', '-bsv', default=1, type=int, 
+        self.parser.add_argument('--batch_size_val', '-bsv', default=8, type=int, 
                                  help='Number of batch size for validation during training, memory and speed tradeoff')
         self.parser.add_argument('--pretrained', '-pt', type=str, default=None,
                                  help='Path of pre-trained model weights')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
-        self.parser.add_argument('--save_path', type=str, default='./checkpoints',
+        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints',
                                  help='Trained models save path')
-        self.parser.add_argument('--log_path', type=str, default=f'./checkpoints/logs/{current_time}',
-                                 help='Trained models save path')
-        self.parser.add_argument('--log_rate', type=int, default=500,
+        self.parser.add_argument('--log_rate', type=int, default=1000,
                                  help='Rate of logging plot')
         self.parser.add_argument('--config_file', '-cfg', type=str, default=None,
                                  help='Model config file path. Default path is "[ckpt_path]/model_config.yaml" when testing')
@@ -111,8 +109,6 @@ class Options():
                                  help='Saving network states per # epochs')
         self.parser.add_argument('--save_freq_step', '-sfs', type=int, default=5000,
                                  help='Saving latest network states per # steps')
-        self.parser.add_argument('--plot_log_freq', '-plf', type=int, default=1,
-                                 help='Saving predicted testset-emg plot images per # epochs')
         self.parser.add_argument('--start_save_ep', '-sts', type=int, default=0,
                                  help='Start to save model each epoch after training # epochs')
         self.parser.add_argument('--top_k', type=int, default=5,
@@ -137,6 +133,7 @@ class Options():
 
     def dirsetting(self, opt):
         opt.ckpt_path = os.path.join(opt.save_path, opt.name)
+        opt.log_path = os.path.join(opt.ckpt_path, "log")
         opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
         if not opt.eval:
             print("Now in train")

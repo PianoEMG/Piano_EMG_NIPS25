@@ -24,10 +24,10 @@ class KeyEmgDataset(data.Dataset):
         # print(f'Cropping data into windows length={self.win_len}')
         
         for file in tqdm(self.dataset_list):
-            with open(f'C:/Users/ruofa/Desktop/Piano_Dataset/keystroke_data/{file}', 'rb') as f2:
+            with open(f'../../Piano_Dataset/keystroke_data/{file}', 'rb') as f2:
                 keystroke_data = pkl.load(f2)
             keystroke_data = torch.tensor(keystroke_data).float()
-            with open(f'C:/Users/ruofa/Desktop/Piano_Dataset/emg_data/{file}', 'rb') as f:
+            with open(f'../../Piano_Dataset/emg_data/{file}', 'rb') as f:
                 emg_data = pkl.load(f)
             emg_data = torch.tensor(emg_data).float()
             # print(keystroke_data.shape,emg_data.shape)

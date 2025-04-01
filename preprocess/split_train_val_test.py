@@ -16,8 +16,8 @@ def split_dataset(data_dir, train_ratio=0.7, test_ratio=0.2, val_ratio=0.1):
     random.shuffle(files)
 
     # 3. 计算每个子集的大小
-    train_size = 5000
-    test_size = 1500
+    train_size = 6000
+    test_size = 800
     val_size = len(files) - train_size - test_size  # 剩下的作为 val
 
     # 4. 切分数据集
@@ -40,5 +40,5 @@ def split_dataset(data_dir, train_ratio=0.7, test_ratio=0.2, val_ratio=0.1):
     print(f'Dataset split and saved to {json_file}')
 
 # 使用该函数
-data_dir = 'C:\\Users\\ruofa\\Desktop\\Piano_Dataset\\emg_data'  # 这里替换为你的数据文件夹路径
+data_dir = '../../../Piano_Dataset/keystroke_data/'  # 这里替换为你的数据文件夹路径
 split_dataset(data_dir)

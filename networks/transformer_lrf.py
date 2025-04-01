@@ -6,7 +6,7 @@ from networks.layers import *
 
 def get_pad_mask(batch_size, seq_len, non_pad_lens):
     non_pad_lens = non_pad_lens.data.tolist()
-    mask_2d = torch.zeros((batch_size, seq_len), dtype=torch.float32)
+    mask_2d = torch.zeros((batch_size, seq_len), dtype=torch.float16)
     for i, cap_len in enumerate(non_pad_lens):
         mask_2d[i, :cap_len] = 1
     return mask_2d.unsqueeze(1).bool()
@@ -365,16 +365,16 @@ class TransformerV2(nn.Module):
         enc_output, *_ = self.encoder(src_seq, src_mask)
 
         while trg_seq.shape[1] < src_seq.shape[1]:
-            print(f"trg_seq len: {trg_seq.shape[1]}")
+            # print(f"trg_seq len: {trg_seq.shape[1]}")
             trg_mask = get_subsequent_mask(trg_seq)
             dec_output, *_ = self.decoder(trg_seq, trg_mask, enc_output, src_mask)
             seq_logit = self.trg_word_prj(dec_output)
-            print(f"seq_logit shape: {seq_logit.shape}")
+            # print(f"seq_logit shape: {seq_logit.shape}")
             logits = seq_logit[:, -1, :]
             logits = logits.unsqueeze(1)
-            print(f"logits shape: {logits.shape}")
+            # print(f"logits shape: {logits.shape}")
             trg_seq = torch.cat((trg_seq, logits), dim=1)
-        print(f"trg_seq shape: {trg_seq.shape}")
+        # print(f"trg_seq shape: {trg_seq.shape}")
         return trg_seq
 
 
