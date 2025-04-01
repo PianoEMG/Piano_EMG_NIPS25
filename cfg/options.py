@@ -47,17 +47,15 @@ class Options():
                                  help='Dataset path')
         self.parser.add_argument('--batch_size', '-bs', default=64, type=int,
                                  help='Number of batch size for training')
-        self.parser.add_argument('--batch_size_val', '-bsv', default=1, type=int, 
+        self.parser.add_argument('--batch_size_val', '-bsv', default=8, type=int, 
                                  help='Number of batch size for validation during training, memory and speed tradeoff')
         self.parser.add_argument('--pretrained', '-pt', type=str, default=None,
                                  help='Path of pre-trained model weights')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
-        self.parser.add_argument('--save_path', type=str, default='./checkpoints',
+        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints',
                                  help='Trained models save path')
-        self.parser.add_argument('--log_path', type=str, default=f'./checkpoints/logs/{current_time}',
-                                 help='Trained models save path')
-        self.parser.add_argument('--log_rate', type=int, default=500,
+        self.parser.add_argument('--log_rate', type=int, default=1,
                                  help='Rate of logging plot')
         self.parser.add_argument('--config_file', '-cfg', type=str, default=None,
                                  help='Model config file path. Default path is "[ckpt_path]/model_config.yaml" when testing')
@@ -91,7 +89,7 @@ class Options():
                                  help="Learning rate")
         self.parser.add_argument('--dynamic_lr', '-dlr', action='store_true',
                                  help="Activate to adjust the learning rate based on the batch size and the number of devices.")
-        self.parser.add_argument('--precision', choices=["bf16", "fp16", "fp32"], default="fp16",
+        self.parser.add_argument('--precision', choices=["bf16", "fp16", "fp32"], default="bf16",
                                  help='Precision used in training.')
         self.parser.add_argument('--accumulate_batches', '-ab', default=1, type=int,
                                  help='Number of accumulate batches')
@@ -137,6 +135,7 @@ class Options():
 
     def dirsetting(self, opt):
         opt.ckpt_path = os.path.join(opt.save_path, opt.name)
+        opt.log_path = os.path.join(opt.ckpt_path, "log")
         opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
         if not opt.eval:
             print("Now in train")
