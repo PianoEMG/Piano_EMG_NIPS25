@@ -44,12 +44,6 @@ def get_configurations():
     return opt, opt.device, device_num
 
 def plot_recon_emg(data, save_dir):
-    # data = train_dataset.inv_transform(data)
-    # for i in range(len(data)):
-    #     joint_data = data[i]
-    #     joint = recover_from_ric(torch.from_numpy(joint_data).float(), opt.joints_num).numpy()
-    #     save_path = pjoin(save_dir, '%02d.mp4' % (i))
-    #     plot_3d_motion(save_path, kinematic_chain, joint, title="None", fps=fps, radius=radius)
     os.makedirs(save_dir, exist_ok=True)
     batch_size = data.shape[0] // 2 
     recon_data, gt_emg = data[:batch_size], data[batch_size:]  
@@ -57,11 +51,13 @@ def plot_recon_emg(data, save_dir):
         save_path = pjoin(save_dir, '%02d.png' % (i))
         fig, axs = plt.subplots(2, 1, figsize=(15, 10))
         axs[0].plot(range(data.shape[1]), gt_emg[i, :, :], label='GT EMG')
-        axs[1].plot(range(data.shape[1]), recon_data[i, :, :], label='Recon EMG')
         axs[0].legend()
         axs[0].set_title('GT EMG')
+        axs[0].set_ylim(-1, 1)
+        axs[1].plot(range(data.shape[1]), recon_data[i, :, :], label='Recon EMG')
         axs[1].legend()
         axs[1].set_title('Recon EMG')
+        axs[1].set_ylim(-1, 1)
         plt.tight_layout()
         plt.savefig(save_path)
         plt.close(fig)
@@ -102,7 +98,7 @@ if __name__ == '__main__':
     vq_encoder, vq_decoder, quantizer = load_models(opt)
     trainer = VQTokenizerTrainerV3(opt, vq_encoder, quantizer, vq_decoder)
 
-    wandb.init(project='Piano_EMG_NIPS25_VQ', name='p1_data_on_Dell')
+    wandb.init(project='Piano_EMG_NIPS25_VQ', name='p1_data_on_Dell_try')
     wandb.watch(
             models=[vq_encoder, quantizer, vq_decoder],
             criterion=None,
