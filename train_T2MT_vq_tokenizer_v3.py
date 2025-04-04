@@ -25,6 +25,8 @@ from cfg.options import Options, TrainVQTokenizerOptions
 def get_configurations():
     parser = TrainVQTokenizerOptions()
     opt = parser.get_options()
+    opt.en_channels = [128, 256, opt.dim_vq_latent]
+    opt.de_channels = [opt.dim_vq_latent, 256, 128, 6]
     opt.train_files_num = 300
     opt.val_files_num = 10
     opt.mode = "train"
@@ -68,8 +70,8 @@ def load_models(opt):
     # vq_encoder = VQEncoderV3(dim_pose - 4, enc_channels, opt.n_down)
     # vq_encoder = VQEncoderV3(input_size=6, channels= [1024, opt.dim_vq_latent], n_down=2)
     # vq_decoder = VQDecoderV3(input_size=opt.dim_vq_latent, channels=[opt.dim_vq_latent, 1024, 6], n_resblk=2, n_up=2)
-    vq_encoder = VQEncoderV3(input_size=6, channels= [128, 256, 512, opt.dim_vq_latent], n_down=4)
-    vq_decoder = VQDecoderV3(input_size=opt.dim_vq_latent, channels=[opt.dim_vq_latent, 512, 256, 128, 6], n_resblk=2, n_up=4)
+    vq_encoder = VQEncoderV3(input_size=6, channels=opt.en_channels, n_down=3)
+    vq_decoder = VQDecoderV3(input_size=opt.dim_vq_latent, channels=opt.de_channels, n_resblk=2, n_up=3)
 
     quantizer = Quantizer(opt.codebook_size, opt.dim_vq_latent, opt.lambda_beta)
     # discriminator = VQDiscriminator(6, opt.dim_vq_dis_hidden, opt.n_layers_dis)
