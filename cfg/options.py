@@ -53,7 +53,7 @@ class Options():
                                  help='Path of pre-trained model weights')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
-        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints',
+        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/Transformer_Model',
                                  help='Trained models save path')
         self.parser.add_argument('--log_rate', type=int, default=1,
                                  help='Rate of logging plot')
@@ -180,3 +180,105 @@ class Options():
         self.parse(opt)
 
         return opt
+    
+
+class TrainVQTokenizerOptions():
+    def __init__(self):
+        self.parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        self.parser.add_argument('--name', '-n', default=f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
+                                 help='Project name under the checkpoints file')
+        self.parser.add_argument('--decomp_name', type=str, default="Decomp_SP001_SM001_H512", help='Name of this trial')
+
+        self.parser.add_argument("--gpu_id", type=int, default=-1,
+                                 help='GPU id')
+
+        self.parser.add_argument('--dataset_name', type=str, default='t2m', help='Dataset Name')
+        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/VQ_Model',
+                                 help='Trained models save path')
+        self.parser.add_argument('--config_file', '-cfg', type=str, default=None,
+                                 help='Model config file path. Default path is "[ckpt_path]/model_config.yaml" when testing')
+        self.parser.add_argument("--window_size", type=int, default=64, help="Length of motion")
+
+        self.parser.add_argument('--q_mode', type=str, default='cmt', help='Dataset Name')
+        self.parser.add_argument('--dim_vq_enc_hidden', type=int, default=1024, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--dim_vq_dec_hidden', type=int, default=1024, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--dim_vq_latent', type=int, default=512, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--dim_vq_dis_hidden', type=int, default=512, help='Dimension of hidden unit in GRU')
+
+        self.parser.add_argument('--n_layers_dis', type=int, default=2, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--n_down', type=int, default=2, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--n_resblk', type=int, default=2, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--codebook_size', type=int, default=1024, help='Dimension of hidden unit in GRU')
+
+        self.parser.add_argument('--use_gan', action="store_true", help='Training iterations')
+        self.parser.add_argument('--use_feat_M', action="store_true", help='Training iterations')
+        self.parser.add_argument('--use_percep', action="store_true", help='Training iterations')
+        self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
+                                 help='Number of threads when reading data')
+
+
+        self.parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+        self.parser.add_argument('--epoch', type=int, default=100, help='Training iterations')
+
+        self.parser.add_argument('--feat_bias', type=float, default=5, help='Layers of GRU')
+
+        self.parser.add_argument('--start_dis_epoch', type=float, default=10, help='Layers of GRU')
+
+        self.parser.add_argument('--lambda_adv', type=float, default=0.5, help='Layers of GRU')
+        self.parser.add_argument('--lambda_fm', type=float, default=0.01, help='Layers of GRU')
+        self.parser.add_argument('--lambda_beta', type=float, default=1, help='Layers of GRU')
+
+
+        self.parser.add_argument('--lr', type=float, default=1e-4, help='Layers of GRU')
+
+        self.parser.add_argument('--is_continue', action="store_true", help='Training iterations')
+
+        self.parser.add_argument('--log_every', type=int, default=20, help='Frequency of printing training progress')
+        self.parser.add_argument('--save_every_e', type=int, default=20, help='Frequency of printing training progress')
+        self.parser.add_argument('--eval_every_e', type=int, default=20, help='Frequency of printing training progress')
+        self.parser.add_argument('--save_latest', type=int, default=500, help='Frequency of printing training progress')
+
+    def dirsetting(self, opt):
+        opt.ckpt_path = os.path.join(opt.save_path, opt.name)
+        opt.eval_path = os.path.join(opt.ckpt_path, 'eval')
+
+        opt.log_path = os.path.join(opt.ckpt_path, "log")
+        opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
+        if opt.is_train:
+            print("Now in train")
+            os.makedirs(opt.ckpt_path, exist_ok=True)
+
+        if opt.config_file is not None:
+            shutil.copy(opt.config_file, os.path.join(opt.ckpt_path, 'model_config.yaml'))
+
+    def get_options(self):
+        self.opt = self.parser.parse_args()
+        self.opt.is_train = True
+        self.dirsetting(self.opt)
+        args = vars(self.opt)
+        return self.opt
+    
+    def print_options(self, opt):
+        """Print and save options
+
+        It will print both current options and default values(if different).
+        It will save options into a text file / [checkpoints_dir] / opt.txt
+        """
+        message = ''
+        message += '----------------- Options ---------------\n'
+        for k, v in sorted(vars(opt).items()):
+            comment = ''
+            default = self.parser.get_default(k)
+            if v != default:
+                comment = '\t[default: %s]' % str(default)
+            message += '{:>25}: {:<40}{}\n'.format(str(k), str(v), comment)
+        message += '----------------- End -------------------'
+        print(message)
+
+        # save to the disk
+        mode = 'at' if not self.opt.is_train else 'wt'
+        file_name = os.path.join(opt.ckpt_path, f'{opt.mode}_opt.txt')
+        with open(file_name, mode) as opt_file:
+            opt_file.write(message)
+            opt_file.write('\n')
+    

@@ -15,8 +15,8 @@ class KeyEmgDataset(data.Dataset):
         self.mode = mode
         self.win_len, self.overlap_len = win_len, overlap_len
         self.data = []
-        # with open(f'./preprocess/train_test_val_dataset.json', 'r') as f:
-        with open(f'./preprocess/temp_dataset.json', 'r') as f:
+        with open(f'./preprocess/temp_p1.json', 'r') as f:
+        # with open(f'./preprocess/temp_p1.json', 'r') as f:
             dataset_all_list = json.load(f)
         self.dataset_list = dataset_all_list[self.mode]
             
@@ -54,7 +54,7 @@ class KeyEmgDataset(data.Dataset):
         if len(arr) > end_idx: # if the last window is shorter than win_len
             num_windows_with_last = num_windows +1
             last_segment = arr[num_windows * step_len:]
-            padded_segment = np.zeros((win_len, last_segment.shape[1]), dtype=arr.dtype)  # pad with 0 to a win_len length window
+            padded_segment = np.full((win_len, last_segment.shape[1]), fill_value=-1, dtype=arr.dtype)  # pad with -1 to a win_len length window
             padded_segment[:len(last_segment)] = last_segment
             sub_arrs.append(padded_segment)
         return np.array(sub_arrs), num_windows_with_last

@@ -6,15 +6,17 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 import pickle as pkl
 from tqdm import tqdm
 import argparse
-from accelerate import Accelerator
+# from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration
 import wandb
 import matplotlib.pyplot as plt
 
 from networks.transformer_lrf import TransformerV2
+from networks.EMGFormer_model import EMGFormer
 from dataloader.dataset import KeyEmgDataset, create_dataloader
 from cfg import config
 from cfg.options import Options
+
 
 def get_network_parser():
     parser = argparse.ArgumentParser(description=' ')
@@ -31,6 +33,8 @@ def get_network_parser():
 def get_configurations():
     parser = Options(eval=False)
     opt = parser.get_options()
+    opt.train_files_num = 6000
+    opt.val_files_num = 200
     opt.mode = "train"
     opt.precision = "bf16"
     opt.epoch = 2
@@ -80,40 +84,54 @@ def log_and_plot_batch(emg_data, pred_data, keystroke, epoch, opt):
         plt.close(fig)
 
 
-def train_and_val(accelerator, model, train_loader, val_loader, optimizer, loss_fn, scheduler, opt, epoch):
+def train_and_val(model, train_loader, val_loader, optimizer, loss_fn, scheduler, opt, epoch, device):
     model.train()
     total_loss = 0
-    for i, data in enumerate(train_loader):
+    # with accelerator.autocast():
+    for i, data in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{opt.epoch}", unit="batch")):
         # print(f"keystroke in train_loader shape: {data['keystroke'].shape}")
         # print(f"emg in train_loader shape: {data['emg'].shape}")
-        # with torch.autocast("cuda", dtype=torch.bfloat16):
-            optimizer.zero_grad()
-            out = model(data['keystroke'], data['emg'])
-            # print(f"out shape: {out.shape}")
-            loss = loss_fn(data['emg'], out)
-            accelerator.backward(loss)
-            optimizer.step()
-            total_loss += loss.item()
+        optimizer.zero_grad()
+        data['keystroke'], data['emg'] = data['keystroke'].to(device), data['emg'].to(device)
+        out = model(data['keystroke'], data['emg'])
+        # out = model.sample(data['keystroke'])
+        # print(f"out shape: {out.shape}")
+        loss = loss_fn(data['emg'], out)
+        # accelerator.backward(loss)
+        loss.backward()
+        optimizer.step()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        total_loss += loss.item()
+        # if accelerator.is_main_process:
+        wandb.log({'train_loss': loss.item()})
+        if i % opt.log_rate == 0:
+            log_and_plot_batch(data['emg'], out, data['keystroke'], epoch, opt, "train")
     
     avg_train_loss = total_loss / len(train_loader)
-    if accelerator.is_main_process:
-        wandb.log({'avg_train_loss': avg_train_loss})
+    # if accelerator.is_main_process:
+    wandb.log({'avg_train_loss': avg_train_loss})
 
     model.eval()
     total_val_loss = 0
     with torch.no_grad():
-        for i, data in enumerate(val_loader):
-            out = model.sample(data['keystroke'])
-            print(f"out in val shape: {out.shape}")
-            loss = loss_fn(data['emg'], out)
-            total_val_loss += loss.item()
+        # with accelerator.autocast():
+            for i, data in enumerate(tqdm(val_loader, desc="Validating", unit="batch")):
+                data['keystroke'], data['emg'] = data['keystroke'].to(device), data['emg'].to(device)
+                out = model.sample(data['keystroke'])
+                # out = model(data['keystroke'])
+                # print(f"out in val shape: {out.shape}")
+                loss = loss_fn(data['emg'], out)
+                total_val_loss += loss.item()
+                # if accelerator.is_main_process:
+                wandb.log({'val_loss': loss.item()})
 
-            if i % opt.log_rate == 0 and accelerator.is_main_process:
-                log_and_plot_batch(data['emg'], out, data['keystroke'], epoch, opt)
+                if i % opt.log_rate == 0:
+                    # print(f"log_rate: {opt.log_rate}")
+                    log_and_plot_batch(data['emg'], out, data['keystroke'], epoch, opt, "val")
 
     avg_val_loss = total_val_loss / len(val_loader)
-    if accelerator.is_main_process:
-        wandb.log({'avg_val_loss': avg_val_loss})
+    # if accelerator.is_main_process:
+    wandb.log({'avg_val_loss': avg_val_loss})
     scheduler.step()
 
     return avg_train_loss, avg_val_loss
@@ -121,27 +139,35 @@ def train_and_val(accelerator, model, train_loader, val_loader, optimizer, loss_
 def main():
     opt, device, device_num = get_configurations()
     args = get_network_parser()
-    projection_config = ProjectConfiguration(project_dir=opt.ckpt_path)
-    accelerator = Accelerator(mixed_precision=opt.precision, log_with="wandb", project_config=projection_config)
+    # projection_config = ProjectConfiguration(project_dir=opt.ckpt_path)
+    # accelerator = Accelerator(mixed_precision=opt.precision, log_with="wandb", project_config=projection_config)
 
-    train_dataset = KeyEmgDataset(mode="train", win_len=1024, overlap_len=64)
-    val_dataset = KeyEmgDataset(mode="val", win_len=128, overlap_len=0)
+    logging.basicConfig(
+        filename=os.path.join(opt.ckpt_path, "train.log"),  
+        filemode="a",           
+        level=logging.INFO,     
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
+    train_dataset = KeyEmgDataset(mode="train", win_len=opt.win_len, overlap_len=opt.overlap)
+    val_dataset = KeyEmgDataset(mode="val", win_len=opt.win_len_val, overlap_len=opt.overlap_val)
     train_loader = create_dataloader(train_dataset, opt, "KeyEmgDataloader", device_num, True, opt.batch_size)
     val_loader = create_dataloader(val_dataset, opt, "KeyEmgDataloader", device_num, False, opt.batch_size_val)
     # print(f"dataset len / batch_size = dataloader len: {len(train_dataset)} / {opt.batch_size} = {len(train_loader)}")
 
     print(f"running on device: {device}")
-    model = TransformerV2()
+    model = TransformerV2().to(device)
+    # model = EMGFormer()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.base_lr)
     scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True, min_lr=1e-6)
     loss_fn = nn.MSELoss()
 
-    model, optimizer, scheduler, train_loader, val_loader = accelerator.prepare(model, optimizer, scheduler, train_loader, val_loader)
-    if accelerator.is_main_process:
-        wandb.init(project='Piano_EMG_NIPS25')
-        accelerator.init_trackers(opt.name)
-        wandb.watch(model)
+    # model, optimizer, scheduler, train_loader, val_loader = accelerator.prepare(model, optimizer, scheduler, train_loader, val_loader)
+    # if accelerator.is_main_process:
+    wandb.init(project='Piano_EMG_NIPS25', name='p1_data_on_Dell')
+    # accelerator.init_trackers(opt.name)
+    wandb.watch(model)
 
     best_val_loss = float('inf')
     if not os.path.exists(opt.ckpt_path):
@@ -150,21 +176,22 @@ def main():
         os.makedirs(opt.log_path)
 
     for epoch in range(opt.epoch):
-        train_loss, val_loss = train_and_val(accelerator, model, train_loader, val_loader, optimizer, loss_fn, scheduler, opt, epoch)
+        train_loss, val_loss = train_and_val(model, train_loader, val_loader, optimizer, loss_fn, scheduler, opt, epoch, device)
         print(f"Epoch {epoch + 1}/{opt.epoch}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
         if val_loss < best_val_loss:
-            best_loss = val_loss
-            if accelerator.is_main_process:
-                print(f'Best model saved at epoch {epoch}, with val_loss {best_loss}')
-                torch.save(model.state_dict(), os.path.join(opt.ckpt_path,'best_epoch_'+str(epoch)+'.pth'))
+            best_val_loss = val_loss
+            # if accelerator.is_main_process:
+            print(f'Best model saved at epoch {epoch}, with val_loss {best_val_loss}')
+            logging.info(f'Best model saved at epoch {epoch}, with val_loss {best_val_loss}')
+            torch.save(model.state_dict(), os.path.join(opt.ckpt_path,'best_epoch_'+str(epoch)+'.pth'))
         else:
             print(f"Not saved at epoch {epoch}, current val_loss is {val_loss}")
-        if accelerator.is_main_process:
-            torch.save(model.state_dict(), os.path.join(opt.ckpt_path, 'latest_epoch.pth'))
+        # if accelerator.is_main_process:
+        torch.save(model.state_dict(), os.path.join(opt.ckpt_path, 'latest_epoch.pth'))
     
-    if accelerator.is_main_process:
-        torch.save(model.state_dict(), os.path.join(opt.ckpt_path,'final_epoch_'+str(epoch)+'.pth'))
-        wandb.finish()
+    # if accelerator.is_main_process:
+    torch.save(model.state_dict(), os.path.join(opt.ckpt_path,'final_epoch_'+str(epoch)+'.pth'))
+    wandb.finish()
 
 
 main()
