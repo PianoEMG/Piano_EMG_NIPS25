@@ -241,6 +241,7 @@ class TrainVQTokenizerOptions():
     def dirsetting(self, opt):
         opt.ckpt_path = os.path.join(opt.save_path, opt.name)
         opt.eval_path = os.path.join(opt.ckpt_path, 'eval')
+        opt.train_path = os.path.join(opt.ckpt_path, 'train')
 
         opt.log_path = os.path.join(opt.ckpt_path, "log")
         opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')

@@ -417,6 +417,12 @@ class VQTokenizerTrainerV3(Trainer):
             if epoch % self.opt.save_every_e == 0:
                 self.save(pjoin(self.opt.ckpt_path, 'E%04d.tar' % (epoch)), epoch, total_it=it)
 
+            if epoch % self.opt.eval_every_e == 0:
+                data = torch.cat([self.recon_motions, self.motions], dim=0).detach().cpu().numpy()
+                save_dir = pjoin(self.opt.train_path, 'E%04d' % (epoch))
+                os.makedirs(save_dir, exist_ok=True)
+                plot_eval(data, save_dir)
+
             print('Validation time:')
 
             val_loss_rec = 0
