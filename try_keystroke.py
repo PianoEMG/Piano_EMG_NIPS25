@@ -11,12 +11,16 @@ from accelerate.utils import ProjectConfiguration
 import wandb
 import matplotlib.pyplot as plt
 import json
+from os.path import join as pjoin
 
-from networks.transformer_lrf import TransformerV2
-from networks.vq_lrf import VQEncoderV3
+from networks.transformer_lrf_VQ import TransformerV2
+from networks.EMGFormer_model import EMGFormer, Seq2SeqTransformer
+from networks.vq_lrf import VQEncoderV3, TransformerT2MTrainer
 from dataloader.dataset import KeyEmgDataset, create_dataloader
 from cfg import config
 from cfg.options import Options
+from networks.vq_lrf import VQEncoderV3, VQDecoderV3, Quantizer, VQTokenizerTrainerV3
+from train_T2MT_vq_transformer import get_configurations
 
 def log_and_plot_batch(emg_data, keystroke, performance_name):
     seq_len, emg_channels, keystroke_channels = emg_data.shape[0], emg_data.shape[1], keystroke.shape[1]
@@ -73,37 +77,53 @@ def log_and_plot_batch(emg_data, keystroke, performance_name):
 # log_and_plot_batch(emg_data, keystroke_data, performance_name)
 
 
-def get_configurations():
-    parser = Options(eval=False)
-    opt = parser.get_options()
-    opt.mode = "train"
-    opt.precision = "bf16"
-    opt.epoch = 2
-    opt.batch_size = 8
-    opt.batch_size_val = 32
-    opt.num_threads = 0
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device_num = torch.cuda.device_count()
-    parser.print_options(opt)
-    return opt, device, device_num
+opt, device, device_num = get_configurations()
 
-# opt, device, device_num = get_configurations()
-# val_dataset = KeyEmgDataset(mode="val", win_len=4, overlap_len=0)
+# train_dataset = KeyEmgDataset(mode="train", win_len=opt.win_len, overlap_len=opt.overlap)
+# val_dataset = KeyEmgDataset(mode="val", win_len=opt.win_len_val, overlap_len=opt.overlap_val)
+# train_loader = create_dataloader(train_dataset, opt, "KeyEmgDataloader", device_num, True, opt.batch_size)
+# print(f"train dataset len / batch_size = dataloader len: {len(train_dataset)} / {opt.batch_size} = {len(train_loader)}")
 # val_loader = create_dataloader(val_dataset, opt, "KeyEmgDataloader", device_num, False, opt.batch_size_val)
-# print()
-# loss_fn = nn.MSELoss()
+# print(f"val dataset len / batch_size = dataloader len: {len(val_dataset)} / {opt.batch_size_val} = {len(val_loader)}")
 
-# total_val_loss_zeros = 0
-# for data in tqdm(val_loader):
-#     out_zeros = torch.zeros(data['emg'].shape[0], data['emg'].shape[1], data['emg'].shape[2])
-#     loss_zeros = loss_fn(data['emg'], out_zeros)
-#     total_val_loss_zeros += loss_zeros.item()
-# avg_val_loss_zeros = total_val_loss_zeros / len(val_loader)
+temp_keystroke = torch.randn(8, 1024, 88)
+# temp_target_tensor = torch.randn(8, 128, 256)
+# transformer = TransformerV2()
+transformer = Seq2SeqTransformer()
 
-# print(avg_val_loss_zeros)
+# trainer = TransformerT2MTrainer(opt, transformer)
+# trainer.train(train_loader, val_loader, None)
 
-temp_tensor = torch.randn(8, 1024, 6)
-vq_encoder = VQEncoderV3(input_size=6, channels= [1024, 128], n_down=2)
-out_tensor = vq_encoder(temp_tensor)
-print(out_tensor.shape)
+out = transformer(temp_keystroke)
+print(f"out shape: {out.shape}")
+
+
+# checkpoint = torch.load('../../Piano_EMG_NIPS25_checkpoints/VQ_Model/2025-04-04_18-02-21 128x256/finest.tar',
+#                             map_location='cuda')
+# dim_vq_latent = 256
+# en_channels = [128, 256, dim_vq_latent]
+# de_channels = [dim_vq_latent, 256, 128, 6]
+# vq_encoder = VQEncoderV3(input_size=6, channels=en_channels, n_down=3)
+# vq_decoder = VQDecoderV3(input_size=dim_vq_latent, channels=de_channels, n_resblk=2, n_up=3)
+# quantizer = Quantizer(1024, dim_vq_latent, 1)
+
+# vq_encoder.load_state_dict(checkpoint['vq_encoder'])    
+# vq_decoder.load_state_dict(checkpoint['vq_decoder'])
+# quantizer.load_state_dict(checkpoint['quantizer'])
+
+# temp_emg = torch.randn(8, 1024, 6)
+# pre_latents = vq_encoder(temp_emg)
+# print(f"encoder_out shape: {pre_latents.shape}") # [bs, 128, 256]
+# embedding_loss, vq_latents, _, perplexity = quantizer(pre_latents)
+# print(f"embedding_loss: {embedding_loss}") # []
+# print(f"vq_latents shape: {vq_latents.shape}") # [bs, 128, 256]   
+# print(f"perplexity: {perplexity}") # 71.68    
+
+# out_tensor = transformer(temp_keystroke, vq_latents)
+# print(f"out_tensor shape: {out_tensor.shape}") # [bs, 128, 256]
+# out_sample_tensor = transformer.sample(temp_keystroke)
+# print(f"out_sample_tensor shape: {out_sample_tensor.shape}") # [bs, 128, 256]
+
+# recon_emgs = vq_decoder(vq_latents)
+# print(f"decoder_out shape: {recon_emgs.shape}") # [bs, seq_len, 6]

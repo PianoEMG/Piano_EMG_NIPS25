@@ -26,9 +26,9 @@ def get_configurations():
     parser = TrainVQTokenizerOptions()
     opt = parser.get_options()
     opt.en_channels = [128, 256, opt.dim_vq_latent]
-    opt.de_channels = [opt.dim_vq_latent, 256, 128, 6]
-    opt.train_files_num = 300
-    opt.val_files_num = 10
+    opt.de_channels = [opt.dim_vq_latent, 256, 128, 88]
+    opt.train_files_num = 6000
+    opt.val_files_num = 500
     opt.mode = "train"
     opt.precision = "bf16"
     opt.epoch = 100
@@ -70,7 +70,7 @@ def load_models(opt):
     # vq_encoder = VQEncoderV3(dim_pose - 4, enc_channels, opt.n_down)
     # vq_encoder = VQEncoderV3(input_size=6, channels= [1024, opt.dim_vq_latent], n_down=2)
     # vq_decoder = VQDecoderV3(input_size=opt.dim_vq_latent, channels=[opt.dim_vq_latent, 1024, 6], n_resblk=2, n_up=2)
-    vq_encoder = VQEncoderV3(input_size=6, channels=opt.en_channels, n_down=3)
+    vq_encoder = VQEncoderV3(input_size=88, channels=opt.en_channels, n_down=3)
     vq_decoder = VQDecoderV3(input_size=opt.dim_vq_latent, channels=opt.de_channels, n_resblk=2, n_up=3)
 
     quantizer = Quantizer(opt.codebook_size, opt.dim_vq_latent, opt.lambda_beta)
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     vq_encoder, vq_decoder, quantizer = load_models(opt)
     trainer = VQTokenizerTrainerV3(opt, vq_encoder, quantizer, vq_decoder)
 
-    wandb.init(project='Piano_EMG_NIPS25_VQ', name='p1_data_on_Dell_try')
+    wandb.init(project='Piano_EMG_NIPS25_VQ', name='all_data_on_4090_128x256_keystroke')
     wandb.watch(
             models=[vq_encoder, quantizer, vq_decoder],
             criterion=None,
@@ -112,16 +112,4 @@ if __name__ == '__main__':
 
     wandb.finish()
 
-
-    # train_tensor = torch.randn(8, 1024, 6)
-    # pre_latents = vq_encoder(train_tensor)
-    # print(f"encoder_out shape: {pre_latents.shape}") # [bs, seq_len, 6]
-
-    # embedding_loss, vq_latents, _, perplexity = quantizer(pre_latents)
-    # print(f"embedding_loss: {embedding_loss}") # []
-    # print(f"vq_latents shape: {vq_latents.shape}") # [bs, 256, 6]   
-    # print(f"perplexity: {perplexity}") # 71.68    
-
-    # recon_motions = vq_decoder(vq_latents)
-    # print(f"decoder_out shape: {recon_motions.shape}") # [bs, seq_len, 6]
 

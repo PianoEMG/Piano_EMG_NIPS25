@@ -53,7 +53,7 @@ class Options():
                                  help='Path of pre-trained model weights')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
-        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/Transformer_Model',
+        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/Transformer_Model_Seq2Seq',
                                  help='Trained models save path')
         self.parser.add_argument('--log_rate', type=int, default=1,
                                  help='Rate of logging plot')
@@ -71,6 +71,19 @@ class Options():
                                  help='Initialize global seed.')
         self.parser.add_argument('--ignore_keys', '-ik', type=str, default=[], nargs='*',
                                  help="Ignore keys when initialize from checkpoint.")
+
+    def dirsetting(self, opt):
+        opt.ckpt_path = os.path.join(opt.save_path, opt.name)
+        opt.eval_path = os.path.join(opt.ckpt_path, 'eval')
+        opt.train_path = os.path.join(opt.ckpt_path, 'train')
+
+        opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
+        if not opt.eval:
+            print("Now in train")
+            os.makedirs(opt.ckpt_path, exist_ok=True)
+
+        if opt.config_file is not None:
+            shutil.copy(opt.config_file, os.path.join(opt.ckpt_path, 'model_config.yaml'))
 
     def modify_options(self):
         if not self.eval:
@@ -133,16 +146,6 @@ class Options():
         self.parser.add_argument('--interpolate_positional_embedding', '-ipe', action='store_true',
                                  help='Interpolate the positional embedding used in the ViT')
 
-    def dirsetting(self, opt):
-        opt.ckpt_path = os.path.join(opt.save_path, opt.name)
-        opt.log_path = os.path.join(opt.ckpt_path, "log")
-        opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
-        if not opt.eval:
-            print("Now in train")
-            os.makedirs(opt.ckpt_path, exist_ok=True)
-
-        if opt.config_file is not None:
-            shutil.copy(opt.config_file, os.path.join(opt.ckpt_path, 'model_config.yaml'))
 
     def parse(self, opt):
         if opt.dataroot[-1] == '\\':
@@ -182,6 +185,82 @@ class Options():
         return opt
     
 
+
+class TrainVQTransformerOptions():
+    def __init__(self):
+        self.parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        self.parser.add_argument('--name', '-n', default=f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
+                                 help='Project name under the checkpoints file')
+        # self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/VQ_Transformer_Model',
+        #                          help='Trained models save path')
+        self.parser.add_argument('--config_file', '-cfg', type=str, default=None,
+                                 help='Model config file path. Default path is "[ckpt_path]/model_config.yaml" when testing')
+        
+        self.parser.add_argument('--log_rate', type=int, default=1,
+                                 help='Rate of logging plot')
+        self.parser.add_argument('--lr', type=float, default=1e-4, help='Layers of GRU')
+
+        
+        self.parser.add_argument('--dim_vq_latent', type=int, default=256, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--lambda_beta', type=float, default=1, help='Layers of GRU')
+        self.parser.add_argument('--codebook_size', type=int, default=1024, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
+                                 help='Number of threads when reading data')
+    
+    def dirsetting(self, opt):
+        if opt.use_vq:
+            opt.save_path = '../../Piano_EMG_NIPS25_checkpoints/VQ_Transformer_Model'
+        else:
+            opt.save_path = '../../Piano_EMG_NIPS25_checkpoints/Transformer_Model_Seq2Seq'
+        opt.ckpt_path = os.path.join(opt.save_path, opt.name)
+        opt.eval_path = os.path.join(opt.ckpt_path, 'eval')
+        opt.train_path = os.path.join(opt.ckpt_path, 'train')
+
+        opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
+        if opt.is_train:
+            print("Now in train")
+            os.makedirs(opt.ckpt_path, exist_ok=True)
+
+        if opt.config_file is not None:
+            shutil.copy(opt.config_file, os.path.join(opt.ckpt_path, 'model_config.yaml'))
+
+    def parse(self, opt):
+        if opt.dataroot[-1] == '\\':
+            opt.dataroot = opt.dataroot[:-1]
+
+    def print_options(self, opt):
+        """Print and save options
+
+        It will print both current options and default values(if different).
+        It will save options into a text file / [checkpoints_dir] / opt.txt
+        """
+        message = ''
+        message += '----------------- Options ---------------\n'
+        for k, v in sorted(vars(opt).items()):
+            comment = ''
+            default = self.parser.get_default(k)
+            if v != default:
+                comment = '\t[default: %s]' % str(default)
+            message += '{:>25}: {:<40}{}\n'.format(str(k), str(v), comment)
+        message += '----------------- End -------------------'
+        print(message)
+
+        # save to the disk
+        mode = 'at' if opt.is_train else 'wt'
+        file_name = os.path.join(opt.ckpt_path, f'{opt.mode}_opt.txt')
+        with open(file_name, mode) as opt_file:
+            opt_file.write(message)
+            opt_file.write('\n')
+
+    def get_options(self):
+        self.opt = self.parser.parse_args()
+        self.opt.use_vq = False
+        self.opt.is_train = True
+        self.dirsetting(self.opt)
+        args = vars(self.opt)
+        return self.opt
+
+
 class TrainVQTokenizerOptions():
     def __init__(self):
         self.parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -193,7 +272,7 @@ class TrainVQTokenizerOptions():
                                  help='GPU id')
 
         self.parser.add_argument('--dataset_name', type=str, default='t2m', help='Dataset Name')
-        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/VQ_Model',
+        self.parser.add_argument('--save_path', type=str, default='../../Piano_EMG_NIPS25_checkpoints/VQ_Model/keystroke_VQ',
                                  help='Trained models save path')
         self.parser.add_argument('--config_file', '-cfg', type=str, default=None,
                                  help='Model config file path. Default path is "[ckpt_path]/model_config.yaml" when testing')
@@ -202,7 +281,7 @@ class TrainVQTokenizerOptions():
         self.parser.add_argument('--q_mode', type=str, default='cmt', help='Dataset Name')
         self.parser.add_argument('--dim_vq_enc_hidden', type=int, default=1024, help='Dimension of hidden unit in GRU')
         self.parser.add_argument('--dim_vq_dec_hidden', type=int, default=1024, help='Dimension of hidden unit in GRU')
-        self.parser.add_argument('--dim_vq_latent', type=int, default=512, help='Dimension of hidden unit in GRU')
+        self.parser.add_argument('--dim_vq_latent', type=int, default=256, help='Dimension of hidden unit in GRU')
         self.parser.add_argument('--dim_vq_dis_hidden', type=int, default=512, help='Dimension of hidden unit in GRU')
 
         self.parser.add_argument('--n_layers_dis', type=int, default=2, help='Dimension of hidden unit in GRU')

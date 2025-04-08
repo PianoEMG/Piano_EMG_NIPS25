@@ -15,8 +15,9 @@ class KeyEmgDataset(data.Dataset):
         self.mode = mode
         self.win_len, self.overlap_len = win_len, overlap_len
         self.data = []
+        # with open(f'./preprocess/train_test_val_dataset.json', 'r') as f:
         with open(f'./preprocess/temp_p1.json', 'r') as f:
-        # with open(f'./preprocess/temp_p1.json', 'r') as f:
+        # with open(f'./preprocess/train_test_val_dataset_VQ.json', 'r') as f:
             dataset_all_list = json.load(f)
         self.dataset_list = dataset_all_list[self.mode]
             
@@ -24,10 +25,10 @@ class KeyEmgDataset(data.Dataset):
         # print(f'Cropping data into windows length={self.win_len}')
         
         for file in tqdm(self.dataset_list):
-            with open(f'C:/Users/ruofa/Desktop/Piano_Dataset/keystroke_data/{file}', 'rb') as f2:
+            with open(f'../../Piano_Dataset/keystroke_data/{file}', 'rb') as f2:
                 keystroke_data = pkl.load(f2)
             keystroke_data = torch.tensor(keystroke_data).float()
-            with open(f'C:/Users/ruofa/Desktop/Piano_Dataset/emg_data/{file}', 'rb') as f:
+            with open(f'../../Piano_Dataset/emg_data/{file}', 'rb') as f:
                 emg_data = pkl.load(f)
             emg_data = torch.tensor(emg_data).float()
             # print(keystroke_data.shape,emg_data.shape)

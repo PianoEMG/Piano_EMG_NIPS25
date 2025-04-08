@@ -15,6 +15,7 @@ import wandb
 
 from networks.layers import *
 from utils.utils import *
+from networks.transformer_lrf_VQ import *
 
 def init_weight(m):
     if isinstance(m, nn.Conv1d) or isinstance(m, nn.Linear) or isinstance(m, nn.ConvTranspose1d):
@@ -157,18 +158,6 @@ class Quantizer(nn.Module):
 
 
 
-# import tensorflow as tf
-# class Logger(object):
-#     def __init__(self, log_dir):
-#         self.writer = tf.summary.create_file_writer(log_dir)
-
-#     def scalar_summary(self, tag, value, step):
-#         with self.writer.as_default():
-#             tf.summary.scalar(tag, value, step=step)
-#             self.writer.flush()
-
-
-
 class Trainer(object):
     @staticmethod
     def zero_grad(opt_list):
@@ -240,7 +229,8 @@ class VQTokenizerTrainerV3(Trainer):
     #     return torch.FloatTensor(tensor.size()).fill_(val).to(self.opt.gpu_id)
 
     def forward(self, batch_data):
-        motions = batch_data["emg"]
+        # motions = batch_data["emg"]
+        motions = batch_data["keystroke"]
         self.motions = motions.detach().to(self.device).float()
         # print(f"motions shape:{self.motions.shape}")
         self.pre_latents = self.vq_encoder(self.motions)
@@ -248,7 +238,8 @@ class VQTokenizerTrainerV3(Trainer):
         self.embedding_loss, self.vq_latents, _, self.perplexity = self.quantizer(self.pre_latents)
         # print(f"vq_latents shape:{self.vq_latents.shape}")
         self.recon_motions = self.vq_decoder(self.vq_latents)
-
+        # print(f"recon_motions shape:{self.recon_motions.shape}")
+        
     # def calculate_adaptive_weight(self, rec_loss, gan_loss, last_layer):
     #     rec_grads = torch.autograd.grad(rec_loss, last_layer, retain_graph=True)[0]
     #     gan_grads = torch.autograd.grad(gan_loss, last_layer, retain_graph=True)[0]
@@ -454,6 +445,228 @@ class VQTokenizerTrainerV3(Trainer):
                 save_dir = pjoin(self.opt.eval_path, 'E%04d' % (epoch))
                 os.makedirs(save_dir, exist_ok=True)
                 plot_eval(data, save_dir)
+
+            if epoch - min_val_epoch >= 5:
+                print('Early Stopping!~')
+                # break
+
+
+class TransformerT2MTrainer(Trainer):
+    def __init__(self, args, t2m_transformer):
+        self.opt = args
+        self.t2m_transformer = t2m_transformer
+        # self.quantizer = quantizer
+        # self.vq_decoder = vq_decoder
+        self.device = args.device
+
+        # self.trg_pad_index = args.trg_pad_index
+        # self.trg_start_index = args.trg_start_index
+        # self.trg_end_index = args.trg_end_index
+        # self.trg_num_vocab = args.trg_num_vocab
+
+        # if args.is_train:
+        #     self.logger = Logger(args.log_dir)
+
+    def forward(self, batch_data):
+        # word_emb, word_tokens, caption, cap_lens, m_tokens, _ = batch_data
+        word_emb, m_tokens = batch_data['keystroke'], batch_data['emg']
+        word_emb = word_emb.detach().to(self.device).float()
+        m_tokens = m_tokens.detach().to(self.device).float()
+        # word_tokens = word_tokens.detach().to(self.device).long()
+
+        # self.cap_lens = cap_lens
+        # self.caption = caption
+
+        #-------------------------------------------------------------------------------------
+        checkpoint = torch.load('../../Piano_EMG_NIPS25_checkpoints/VQ_Model/2025-04-04_18-02-21 128x256/finest.tar',
+                            map_location='cuda')
+        dim_vq_latent = 256
+        en_channels = [128, 256, dim_vq_latent]
+        de_channels = [dim_vq_latent, 256, 128, 6]
+        vq_encoder = VQEncoderV3(input_size=6, channels=en_channels, n_down=3)
+        vq_decoder = VQDecoderV3(input_size=dim_vq_latent, channels=de_channels, n_resblk=2, n_up=3)
+        quantizer = Quantizer(1024, dim_vq_latent, 1)
+
+        vq_encoder.load_state_dict(checkpoint['vq_encoder'])    
+        vq_decoder.load_state_dict(checkpoint['vq_decoder'])
+        quantizer.load_state_dict(checkpoint['quantizer'])
+        vq_encoder.to(self.device)
+        vq_decoder.to(self.device)
+        quantizer.to(self.device)
+        #-------------------------------------------------------------------------------------
+        pre_latents = vq_encoder(m_tokens)
+        print(f"pre_latents shape: {pre_latents.shape}")
+
+
+        trg_input, self.gold = pre_latents[:, :-1], pre_latents[:, 1:]
+        print(f"trg_input shape: {trg_input.shape}")
+        print(f"gold in forward shape: {self.gold.shape}")
+        # self.trg_pred = self.t2m_transformer(word_tokens, trg_input)
+        self.trg_pred = self.t2m_transformer(word_emb, trg_input)
+
+    def backward(self):
+        # print(self.trg_pred.shape, self.gold.shape)
+        trg_pred = self.trg_pred.view(-1, self.trg_pred.shape[-1]).clone()
+        print(f"trg_pred shape: {trg_pred.shape}")  
+        gold = self.gold.contiguous().view(-1).clone()
+        print(f"gold in backward shape: {gold.shape}")
+        self.loss, self.pred_seq, self.n_correct, self.n_word = cal_performance(trg_pred, gold, smoothing=False)
+        # print(gold, self.pred_seq)
+        # self.loss = loss / n_word
+        loss_logs = OrderedDict({})
+        loss_logs['loss'] = self.loss.item() / self.n_word
+        loss_logs['accuracy'] = self.n_correct / self.n_word
+
+        return loss_logs
+
+    def update(self):
+        self.zero_grad([self.opt_t2m_transformer])
+        # time2_0 = time.time()
+        # print("\t\t Zero Grad:%5f" % (time2_0 - time1))
+        loss_logs = self.backward()
+        self.loss.backward()
+
+        # time2_3 = time.time()
+        # print("\t\t Clip Norm :%5f" % (time2_3 - time2_2))
+        self.step([self.opt_t2m_transformer])
+
+        return loss_logs
+
+    def save(self, file_name, ep, total_it):
+
+        state = {
+            't2m_transformer': self.t2m_transformer.state_dict(),
+
+            'opt_t2m_transformer': self.opt_t2m_transformer.state_dict(),
+
+            'ep': ep,
+            'total_it': total_it,
+        }
+        torch.save(state, file_name)
+
+    def resume(self, model_dir):
+        checkpoint = torch.load(model_dir, map_location=self.device)
+        self.t2m_transformer.load_state_dict(checkpoint['t2m_transformer'])
+
+        self.opt_t2m_transformer.load_state_dict(checkpoint['opt_t2m_transformer'])
+        # if self.opt.use_gan:
+        #     self.discriminator.load_state_dict(checkpoint['discriminator'])
+        #     self.opt_discriminator.load_state_dict(checkpoint['opt_discriminator'])
+        return checkpoint['ep'], checkpoint['total_it']
+
+
+    def train(self, train_dataloader, val_dataloader, plot_eval):
+        
+        self.t2m_transformer.to(self.device)
+        # self.vq_decoder.to(self.device)
+        # self.quantizer.to(self.device)
+
+        self.opt_t2m_transformer = optim.Adam(self.t2m_transformer.parameters(), lr=self.opt.lr)
+
+
+        epoch = 0
+        it = 0
+        if self.opt.is_continue:
+            model_dir = pjoin(self.opt.ckpt_path, 'latest.tar')
+            epoch, it = self.resume(model_dir)
+
+        start_time = time.time()
+        total_iters = self.opt.epoch * len(train_dataloader)
+        print('Iters Per Epoch, Training: %04d, Validation: %03d' % (len(train_dataloader), len(val_dataloader)))
+        val_loss = 0
+        val_accuracy = 0
+        min_val_loss = np.inf
+        min_val_epoch = epoch
+        logs = OrderedDict()
+        while epoch < self.opt.epoch:
+            for i, batch_data in enumerate(train_dataloader):
+                self.t2m_transformer.train()
+
+                self.forward(batch_data)
+
+                log_dict = self.update()
+                # continue
+                # time3 = time.time()
+                # print('Update Time: %.5f s' % (time3 - time2))
+                # time0 = time3
+                for k, v in log_dict.items():
+                    if k not in logs:
+                        logs[k] = v
+                    else:
+                        logs[k] += v
+
+                it += 1
+                if it % self.opt.log_every == 0:
+                    mean_loss = OrderedDict({'val_loss': val_loss, 'val_accuracy':val_accuracy})
+                    # self.logger.scalar_summary('val_loss', val_loss, it)
+                    # self.logger.scalar_summary('val_accuracy', val_accuracy, it)
+
+                    for tag, value in logs.items():
+                        # self.logger.scalar_summary(tag, value / self.opt.log_every, it)
+                        mean_loss[tag] = value / self.opt.log_every
+                    logs = OrderedDict()
+                    print_current_loss(start_time, it, total_iters, mean_loss, epoch, i)
+
+                if it % self.opt.save_latest == 0:
+                    self.save(pjoin(self.opt.model_dir, 'latest.tar'), epoch, it)
+
+            self.save(pjoin(self.opt.model_dir, 'latest.tar'), epoch, it)
+
+            epoch += 1
+            if epoch % self.opt.save_every_e == 0:
+                self.save(pjoin(self.opt.model_dir, 'E%04d.tar' % (epoch)), epoch, total_it=it)
+
+            print('Validation time:')
+
+            val_loss = 0
+            val_accuracy = 0
+            with torch.no_grad():
+                for i, batch_data in enumerate(val_dataloader):
+                    self.forward(batch_data)
+                    self.backward()
+                    val_loss += self.loss.item() / self.n_word
+                    val_accuracy += self.n_correct / self.n_word
+                    # val_loss_rec += self.l1_criterion(self.recon_motions, self.motions).item()
+                    # val_loss_emb += self.embedding_loss.item()
+
+            val_loss = val_loss / len(val_dataloader)
+            val_accuracy = val_accuracy / len(val_dataloader)
+            # val_loss = val_loss / (len(val_dataloader) + 1)
+            # val_loss_rec = val_loss_rec / (len(val_dataloader) + 1)
+            # val_loss_emb = val_loss_emb / (len(val_dataloader) + 1)
+            print(self.gold[0])
+            print(self.pred_seq.view(self.gold.shape)[0])
+
+            print('Validation Loss: %.5f Validation Accuracy: %.4f' % (val_loss, val_accuracy))
+
+            if val_loss < min_val_loss:
+                min_val_loss = val_loss
+                min_val_epoch = epoch
+                self.save(pjoin(self.opt.model_dir, 'finest.tar'), epoch, it)
+                print('Best Validation Model So Far!~')
+
+            # if epoch % self.opt.eval_every_e == 0:
+                # self.quantizer.eval()
+                # self.vq_decoder.eval()
+                # with torch.no_grad():
+                #     pred_seq = self.pred_seq.view(self.gold.shape)[0:1]
+                #     # print(pred_seq.shape)
+                #     non_pad_mask = self.gold[0:1].ne(self.opt.trg_pad_idx)
+                #     pred_seq = pred_seq.masked_select(non_pad_mask).unsqueeze(0)
+                #     # print(non_pad_mask.shape)
+                #     # print(pred_seq.shape)
+                #     # print(pred_seq)
+                #     # print(self.gold[0:1])
+                #     vq_latent = self.quantizer.get_codebook_entry(pred_seq)
+                #     # print(vq_latent.shape)
+                #
+                #     rec_motion = self.vq_decoder(vq_latent)
+                #
+                # save_dir = pjoin(self.opt.eval_dir, 'E%04d' % (epoch))
+                # os.makedirs(save_dir, exist_ok=True)
+                # plot_eval(rec_motion.detach().cpu().numpy(), self.caption[0:1], save_dir)
+                # save_dir = pjoin(self.opt.eval_dir, 'E%04d' % epoch)
+                # os.makedirs()
 
             if epoch - min_val_epoch >= 5:
                 print('Early Stopping!~')
